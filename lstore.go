@@ -15,7 +15,6 @@ var lstore *LocalStore
 // allocation free; goroutine local storage implementation.
 type LocalStore struct {
 	mp   map[int64]uintptr
-	mpok map[int64]bool
 	cap  int64
 	lock int64
 }
@@ -28,9 +27,8 @@ func LStore(cap ...int64) *LocalStore {
 			vcap = cap[0]
 		}
 		lstore = &LocalStore{
-			mp:   make(map[int64]uintptr, vcap),
-			mpok: make(map[int64]bool, vcap),
-			cap:  vcap,
+			mp:  make(map[int64]uintptr, vcap),
+			cap: vcap,
 		}
 	}
 	return lstore
@@ -42,9 +40,10 @@ func LStore(cap ...int64) *LocalStore {
 // for this library now.
 func (ls *LocalStore) Get() uintptr {
 	if i := atomic.LoadInt64(&ls.lock); i == 0 {
-		id := gls.GoID()
-		if ls.mpok[id] {
-			return ls.mp[gls.GoID()]
+		atomic.StoreInt64(&ls.lock, 1)
+		defer atomic.StoreInt64(&ls.lock, 0)
+		if ptr, ok := ls.mp[gls.GoID()]; ok {
+			return ptr
 		}
 	}
 	return 0
@@ -53,22 +52,22 @@ func (ls *LocalStore) Get() uintptr {
 // Set sets local goroutine storage value
 // if there any free capacity slot avaliable.
 func (ls *LocalStore) Set(v uintptr) {
-	atomic.StoreInt64(&ls.lock, 1)
-	defer atomic.StoreInt64(&ls.lock, 0)
-	if int64(len(ls.mp)) == ls.cap {
-		return
+	if i := atomic.LoadInt64(&ls.lock); i == 0 {
+		atomic.StoreInt64(&ls.lock, 1)
+		defer atomic.StoreInt64(&ls.lock, 0)
+		if int64(len(ls.mp)) == ls.cap {
+			return
+		}
+		ls.mp[gls.GoID()] = v
 	}
-	id := gls.GoID()
-	ls.mp[id] = v
-	ls.mpok[id] = true
 }
 
 // Del removes local goroutine storage value
 // frees single capacity slot.
 func (ls *LocalStore) Del() {
-	atomic.StoreInt64(&ls.lock, 1)
-	defer atomic.StoreInt64(&ls.lock, 0)
-	id := gls.GoID()
-	delete(ls.mp, id)
-	delete(ls.mpok, id)
+	if i := atomic.LoadInt64(&ls.lock); i == 0 {
+		atomic.StoreInt64(&ls.lock, 1)
+		defer atomic.StoreInt64(&ls.lock, 0)
+		delete(ls.mp, gls.GoID())
+	}
 }
