@@ -46,7 +46,7 @@ func (ls *LocalStore) Unlock() {
 
 // Lock defines manual lock chek operation.
 func (ls *LocalStore) Locked() bool {
-	return atomic.LoadInt64(&ls.lock) == 0
+	return atomic.LoadInt64(&ls.lock) == 1
 }
 
 // Get returns local goroutine storage value.
