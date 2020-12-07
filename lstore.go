@@ -1,4 +1,4 @@
-package gotcha
+package golocal
 
 import (
 	"sync/atomic"
