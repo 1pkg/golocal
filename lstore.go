@@ -40,7 +40,9 @@ func LStore(cap ...int64) *LocalStore {
 // for this library now.
 func (ls *LocalStore) Get() uintptr {
 	if i := atomic.LoadInt64(&ls.lock); i == 0 {
-		return ls.mp[gls.GoID()]
+		if ptr, ok := ls.mp[gls.GoID()]; ok {
+			return ptr
+		}
 	}
 	return 0
 }
