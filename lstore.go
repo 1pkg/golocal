@@ -14,9 +14,9 @@ var lstore *LocalStore
 // LocalStore defines naive atomic lock; limited slots capacity;
 // allocation free; goroutine local storage implementation.
 type LocalStore struct {
-	mp   map[int64]uintptr
-	cap  int64
-	lock int64
+	Store map[int64]uintptr
+	cap   int64
+	lock  int64
 }
 
 // LStore singleton local storage fetch.
@@ -27,11 +27,26 @@ func LStore(cap ...int64) *LocalStore {
 			vcap = cap[0]
 		}
 		lstore = &LocalStore{
-			mp:  make(map[int64]uintptr, vcap),
-			cap: vcap,
+			Store: make(map[int64]uintptr, vcap),
+			cap:   vcap,
 		}
 	}
 	return lstore
+}
+
+// Lock defines manual locking operation.
+func (ls *LocalStore) Lock() {
+	atomic.StoreInt64(&ls.lock, 1)
+}
+
+// Lock defines manual unlocking operation.
+func (ls *LocalStore) Unlock() {
+	atomic.StoreInt64(&ls.lock, 0)
+}
+
+// Lock defines manual lock chek operation.
+func (ls *LocalStore) Locked() bool {
+	return atomic.LoadInt64(&ls.lock) == 0
 }
 
 // Get returns local goroutine storage value.
@@ -42,7 +57,7 @@ func (ls *LocalStore) Get() uintptr {
 	if i := atomic.LoadInt64(&ls.lock); i == 0 {
 		atomic.StoreInt64(&ls.lock, 1)
 		defer atomic.StoreInt64(&ls.lock, 0)
-		if ptr, ok := ls.mp[gls.GoID()]; ok {
+		if ptr, ok := ls.Store[gls.GoID()]; ok {
 			return ptr
 		}
 	}
@@ -55,10 +70,10 @@ func (ls *LocalStore) Set(v uintptr) {
 	if i := atomic.LoadInt64(&ls.lock); i == 0 {
 		atomic.StoreInt64(&ls.lock, 1)
 		defer atomic.StoreInt64(&ls.lock, 0)
-		if int64(len(ls.mp)) == ls.cap {
+		if int64(len(ls.Store)) == ls.cap {
 			return
 		}
-		ls.mp[gls.GoID()] = v
+		ls.Store[gls.GoID()] = v
 	}
 }
 
@@ -68,6 +83,11 @@ func (ls *LocalStore) Del() {
 	if i := atomic.LoadInt64(&ls.lock); i == 0 {
 		atomic.StoreInt64(&ls.lock, 1)
 		defer atomic.StoreInt64(&ls.lock, 0)
-		delete(ls.mp, gls.GoID())
+		delete(ls.Store, gls.GoID())
 	}
+}
+
+// ID return goroutine local store id.
+func ID() int64 {
+	return gls.GoID()
 }
